@@ -358,6 +358,14 @@ function relayout(){
       w.style.width = newW + 'px';
       w.style.height = newH + 'px';
     }
+    if (!fs){
+if (zoomLevel > 1){
+w.style.marginLeft = '0';
+w.style.marginRight = '0';
+} else {
+w.style.marginLeft = 'auto';
+w.style.marginRight = 'auto';
+}
     const existing = w.querySelector('.zoom-inner');
     if (existing){
       // Instant scaled preview of the previous render while the crisp version loads —
@@ -373,28 +381,61 @@ function relayout(){
 }
 
 function setZoom(newLevel, clientX, clientY){
-  if (newLevel === zoomLevel) return;
-  const vr = viewer.getBoundingClientRect();
-
-  // Anchor on the actual page under the cursor and where within it (as a fraction) —
-  // more reliable than a single global ratio, which drifted once margins between many
-  // pages piled up.
-  let targetWrap = pageWraps[currentPage - 1];
-  for (const w of pageWraps){
-    const r = w.getBoundingClientRect();
-    if (clientY >= r.top && clientY <= r.bottom){ targetWrap = w; break; }
-  }
-  const tr = targetWrap.getBoundingClientRect();
-  const fx = (clientX - tr.left) / tr.width;
-  const fy = (clientY - tr.top) / tr.height;
-
-  zoomLevel = newLevel;
-  relayout();
-
-  viewer.scrollTop = targetWrap.offsetTop + fy * targetWrap.offsetHeight - (clientY - vr.top);
-  viewer.scrollLeft = targetWrap.offsetLeft + fx * targetWrap.offsetWidth - (clientX - vr.left);
-  document.body.classList.toggle('zoomed', zoomLevel > 1);
-  onScroll();
+if (newLevel === zoomLevel) return;
+ 
+const vr = viewer.getBoundingClientRect();
+ 
+let targetWrap = pageWraps[currentPage - 1];
+ 
+for (const w of pageWraps){
+const r = w.getBoundingClientRect();
+if (clientY >= r.top && clientY <= r.bottom){
+targetWrap = w;
+break;
+}
+}
+ 
+const tr = targetWrap.getBoundingClientRect();
+ 
+const fx = (clientX - tr.left) / tr.width;
+const fy = (clientY - tr.top) / tr.height;
+ 
+zoomLevel = newLevel;
+ 
+relayout();
+ 
+requestAnimationFrame(() => {
+ 
+if (zoomLevel > 1){
+ 
+// Pendant le zoom : ancrage strict sous le curseur
+viewer.scrollTop =
+targetWrap.offsetTop +
+fy * targetWrap.offsetHeight -
+(clientY - vr.top);
+ 
+viewer.scrollLeft =
+targetWrap.offsetLeft +
+fx * targetWrap.offsetWidth -
+(clientX - vr.left);
+ 
+} else {
+ 
+// Retour fluide vers le centre lorsque l'on revient à 100%
+viewer.scrollTop =
+targetWrap.offsetTop +
+fy * targetWrap.offsetHeight -
+viewer.clientHeight / 2;
+ 
+viewer.scrollLeft =
+targetWrap.offsetLeft +
+targetWrap.offsetWidth / 2 -
+viewer.clientWidth / 2;
+}
+ 
+document.body.classList.toggle('zoomed', zoomLevel > 1);
+onScroll();
+});
 }
 
 let previewScale = 1;
