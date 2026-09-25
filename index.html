@@ -360,12 +360,12 @@ function relayout(){
     }
     if (!fs){
 if (zoomLevel > 1){
-w.style.marginLeft = '0';
-w.style.marginRight = '0';
+w.style.marginLeft = '10px';
+w.style.marginRight = '10px';
 } else {
 w.style.marginLeft = 'auto';
 w.style.marginRight = 'auto';
-  }
+}
 }
     const existing = w.querySelector('.zoom-inner');
     if (existing){
@@ -384,54 +384,38 @@ w.style.marginRight = 'auto';
 function setZoom(newLevel, clientX, clientY){
 if (newLevel === zoomLevel) return;
  
-const vr = viewer.getBoundingClientRect();
+const oldZoom = zoomLevel;
  
-let targetWrap = pageWraps[currentPage - 1];
+const rect = viewer.getBoundingClientRect();
  
-for (const w of pageWraps){
-const r = w.getBoundingClientRect();
-if (clientY >= r.top && clientY <= r.bottom){
-targetWrap = w;
-break;
-}
-}
- 
-const tr = targetWrap.getBoundingClientRect();
- 
-const fx = (clientX - tr.left) / tr.width;
-const fy = (clientY - tr.top) / tr.height;
+const contentX = viewer.scrollLeft + (clientX - rect.left);
+const contentY = viewer.scrollTop + (clientY - rect.top);
  
 zoomLevel = newLevel;
+ 
+const ratio = newLevel / oldZoom;
  
 relayout();
  
 requestAnimationFrame(() => {
  
-if (zoomLevel > 1){
+if (newLevel > oldZoom){
  
-// Pendant le zoom : ancrage strict sous le curseur
-viewer.scrollTop =
-targetWrap.offsetTop +
-fy * targetWrap.offsetHeight -
-(clientY - vr.top);
- 
-viewer.scrollLeft =
-targetWrap.offsetLeft +
-fx * targetWrap.offsetWidth -
-(clientX - vr.left);
+// Zoom avant : conserver exactement le point sous le curseur
+viewer.scrollLeft = contentX * ratio - (clientX - rect.left);
+viewer.scrollTop = contentY * ratio - (clientY - rect.top);
  
 } else {
  
-// Retour fluide vers le centre lorsque l'on revient à 100%
-viewer.scrollTop =
-targetWrap.offsetTop +
-fy * targetWrap.offsetHeight -
-viewer.clientHeight / 2;
+// Dézoom : retour progressif vers le centre
+const targetLeft =
+contentX * ratio - viewer.clientWidth / 2;
  
-viewer.scrollLeft =
-targetWrap.offsetLeft +
-targetWrap.offsetWidth / 2 -
-viewer.clientWidth / 2;
+const targetTop =
+contentY * ratio - viewer.clientHeight / 2;
+ 
+viewer.scrollLeft += (targetLeft - viewer.scrollLeft) * 0.35;
+viewer.scrollTop += (targetTop - viewer.scrollTop) * 0.35;
 }
  
 document.body.classList.toggle('zoomed', zoomLevel > 1);
