@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gaston Chérel — Portfolio</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root{
@@ -637,24 +638,31 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { relayout(); onScroll(); }, 250);
 });
 
+const PRELOAD_PAGES = 15; // the site opens once this many pages are ready
+let preloadStarted = false;
+
 async function init(){
   try{
-    const loadingTask = pdfjsLib.getDocument({ url: PDF_URL });
+    const loadingTask = pdfjsLib.getDocument({ url: PDF_URL, rangeChunkSize: 1 << 20 });
     loadingTask.onProgress = (p) => {
       if (p.total){
-        barFill.style.width = Math.min(100, Math.round((p.loaded / p.total) * 100)) + '%';
+        // Download progress only fills the first 10% of the bar; the rest tracks page preparation
+        if (!preloadStarted) barFill.style.width = Math.min(10, Math.round((p.loaded / p.total) * 10)) + '%';
       }
     };
     pdfDoc = await loadingTask.promise;
     numPages = pdfDoc.numPages;
 
+    // Build the whole layout from page 1 only (no waiting on the other pages), so the
+    // first page can show right away; other pages' real sizes are checked afterwards.
+    const first = await pdfDoc.getPage(1);
+    const vp1 = first.getViewport({ scale: 1 });
+    const ratio1 = vp1.height / vp1.width;
     for (let i = 1; i <= numPages; i++){
-      const page = await pdfDoc.getPage(i);
-      const vp = page.getViewport({ scale: 1 });
       const wrap = document.createElement('div');
       wrap.className = 'page-wrap';
       const cssW = baseTargetWidth();
-      const cssH = Math.round(cssW * (vp.height / vp.width));
+      const cssH = Math.round(cssW * ratio1);
       wrap.style.width = cssW + 'px';
       wrap.style.height = cssH + 'px';
 
@@ -672,11 +680,37 @@ async function init(){
     }
 
     updateCounter();
-    await renderPage(1);
-    if (numPages > 1) await renderPage(2);
+
+    // Prepare the first pages before opening, so scrolling through them is instant
+    preloadStarted = true;
+    const preload = Math.min(PRELOAD_PAGES, numPages);
+    for (let i = 1; i <= preload; i++){
+      await renderPage(i);
+      barFill.style.width = Math.round(10 + (i / preload) * 90) + '%';
+    }
 
     loading.style.opacity = '0';
     setTimeout(() => loading.remove(), 350);
+
+    // Background: correct any page whose real proportions differ from page 1
+    (async () => {
+      for (let i = 2; i <= numPages; i++){
+        try{
+          const pg = await pdfDoc.getPage(i);
+          const v = pg.getViewport({ scale: 1 });
+          const r = v.height / v.width;
+          if (Math.abs(r - ratio1) / ratio1 > 0.005){
+            const d = pageDims[i - 1];
+            d.h = Math.round(d.w * r);
+            if (!isFullscreen()){
+              pageWraps[i - 1].style.height = d.h + 'px';
+              const ph = pageWraps[i - 1].querySelector('.page-placeholder');
+              if (ph) ph.style.height = d.h + 'px';
+            }
+          }
+        } catch(e){}
+      }
+    })();
 
     onScroll();
   } catch(err){
